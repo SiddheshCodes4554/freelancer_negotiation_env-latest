@@ -1,0 +1,21 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+*/.venv/
+
+# Build artifacts
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Editor/OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temp scripts/logs
+_smoke_*.py
