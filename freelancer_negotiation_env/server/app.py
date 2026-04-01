@@ -53,7 +53,7 @@ app = create_app(
 )
 
 
-def main(host: str = "0.0.0.0", port: int = 8000):
+def main() -> None:
     """
     Entry point for direct execution via uv run or python -m.
 
@@ -62,23 +62,27 @@ def main(host: str = "0.0.0.0", port: int = 8000):
         uv run --project . server --port 8001
         python -m freelancer_negotiation_env.server.app
 
-    Args:
-        host: Host address to bind to (default: "0.0.0.0")
-        port: Port number to listen on (default: 8000)
-
     For production deployments, consider using uvicorn directly with
     multiple workers:
         uvicorn freelancer_negotiation_env.server.app:app --workers 4
     """
     import uvicorn
+    import os
+
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
 
     uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
     import argparse
+    import os
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--host", type=str, default="0.0.0.0")
     args = parser.parse_args()
-    main(port=args.port)
+    os.environ["PORT"] = str(args.port)
+    os.environ["HOST"] = args.host
+    main()

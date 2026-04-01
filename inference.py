@@ -15,6 +15,7 @@ import json
 import os
 import random
 from dataclasses import dataclass
+from time import perf_counter
 
 from openai import OpenAI
 
@@ -41,6 +42,21 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"Missing required environment variable: {name}")
     return value
+
+
+def _log_start(payload: dict[str, object]) -> None:
+    """Emit run-start log in required structured format."""
+    print(f"[START] {json.dumps(payload, ensure_ascii=True)}")
+
+
+def _log_step(payload: dict[str, object]) -> None:
+    """Emit per-step log in required structured format."""
+    print(f"[STEP] {json.dumps(payload, ensure_ascii=True)}")
+
+
+def _log_end(payload: dict[str, object]) -> None:
+    """Emit run-end log in required structured format."""
+    print(f"[END] {json.dumps(payload, ensure_ascii=True)}")
 
 
 def _build_policy_prompt(task: TaskDefinition, observation: dict[str, object], step_index: int) -> str:
@@ -163,13 +179,23 @@ def run_task(
         obs = step_result.observation
         step_count = step_index
         last_decision = action.action_type.value
-        total_reward += float(step_result.reward or 0.0)
+        step_reward = float(step_result.reward or 0.0)
+        total_reward += step_reward
 
         state_obj = getattr(obs, "negotiation_state", None)
         if hasattr(state_obj, "current_price"):
             final_price = float(state_obj.current_price)
 
         done = bool(getattr(obs, "done", False) or step_result.done)
+        _log_step(
+            {
+                "task_id": task.task_id,
+                "step": step_index,
+                "action_type": last_decision,
+                "reward": round(step_reward, 4),
+                "done": done,
+            }
+        )
         if done:
             break
 
@@ -195,6 +221,7 @@ def run_task(
 
 def main() -> None:
     random.seed(RANDOM_SEED)
+    t0 = perf_counter()
 
     api_base_url = _required_env("API_BASE_URL")
     model_name = _required_env("MODEL_NAME")
@@ -204,21 +231,47 @@ def main() -> None:
 
     llm_client = OpenAI(base_url=api_base_url, api_key=hf_token)
 
+    _log_start(
+        {
+            "seed": RANDOM_SEED,
+            "model": model_name,
+            "api_base_url": api_base_url,
+            "openenv_base_url": openenv_base_url,
+            "max_steps_per_task": MAX_STEPS_PER_TASK,
+            "tasks": [task.task_id for task in get_tasks()],
+        }
+    )
+
     summaries: list[TaskRunSummary] = []
-    with FreelancerNegotiationEnv(base_url=openenv_base_url) as env:
+    client = FreelancerNegotiationEnv(base_url=openenv_base_url)
+    with client.sync() as env:
         for task in get_tasks():
             summary = run_task(env=env, llm_client=llm_client, model_name=model_name, task=task)
             summaries.append(summary)
-            print(
-                f"task={summary.task_id} steps={summary.steps} decision={summary.decision} "
-                f"reward={summary.total_reward:.3f} score={summary.grader_score:.4f}"
+            _log_step(
+                {
+                    "task_id": summary.task_id,
+                    "event": "task_complete",
+                    "steps": summary.steps,
+                    "decision": summary.decision,
+                    "total_reward": round(summary.total_reward, 4),
+                    "grader_score": round(summary.grader_score, 4),
+                }
             )
 
     final_score = sum(s.grader_score for s in summaries) / max(len(summaries), 1)
     total_reward = sum(s.total_reward for s in summaries)
+    elapsed_seconds = round(perf_counter() - t0, 3)
 
-    print(f"final_score={final_score:.4f}")
-    print(f"total_reward={total_reward:.3f}")
+    _log_end(
+        {
+            "final_score": round(final_score, 4),
+            "total_reward": round(total_reward, 4),
+            "task_scores": {s.task_id: s.grader_score for s in summaries},
+            "task_rewards": {s.task_id: s.total_reward for s in summaries},
+            "elapsed_seconds": elapsed_seconds,
+        }
+    )
 
 
 if __name__ == "__main__":
