@@ -1,18 +1,3 @@
----
-title: Freelancer Negotiation Environment
-emoji: "💼"
-colorFrom: yellow
-colorTo: red
-sdk: docker
-pinned: false
-app_port: 8000
-base_path: /web
-tags:
-  - openenv
-  - reinforcement-learning
-  - negotiation
----
-
 # Freelancer Negotiation Environment
 
 A deterministic, OpenEnv-compatible benchmark for evaluating negotiation agents in realistic freelancer-client conversations.
