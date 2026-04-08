@@ -137,30 +137,43 @@ def _llm_action(
     observation: dict[str, object],
     step_index: int,
 ) -> ActionModel:
+    def _fallback_action() -> ActionModel:
+        state = observation.get("negotiation_state", {}) if isinstance(observation, dict) else {}
+        current_price = state.get("current_price", 1200) if isinstance(state, dict) else 1200
+        return FreelancerNegotiationAction(
+            message=(
+                f"I can deliver this professionally for Rs {int(float(current_price))} "
+                "with clear scope, timeline, and revision terms."
+            ),
+            action_type=NegotiationActionType.NEGOTIATE,
+        )
+
     prompt = _build_policy_prompt(task=task, observation=observation, step_index=step_index)
 
-    response = client.chat.completions.create(
-        model=model_name,
-        temperature=0,
-        top_p=1,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a deterministic negotiation policy. "
-                    "Always return only JSON with keys: message, action_type."
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ],
-    )
-
-    content = response.choices[0].message.content or "{}"
-    parsed = _extract_action_json(content)
-    return FreelancerNegotiationAction(
-        message=parsed["message"],
-        action_type=NegotiationActionType(parsed["action_type"]),
-    )
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            temperature=0,
+            top_p=1,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a deterministic negotiation policy. "
+                        "Always return only JSON with keys: message, action_type."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+        parsed = _extract_action_json(content)
+        return FreelancerNegotiationAction(
+            message=parsed["message"],
+            action_type=NegotiationActionType(parsed["action_type"]),
+        )
+    except Exception:
+        return _fallback_action()
 
 
 def _observation_to_dict(obs: object) -> dict[str, object]:
